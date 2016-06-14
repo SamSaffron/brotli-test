@@ -47,12 +47,19 @@ ensure_nginx_running(1)
 def test(page, encoding)
   `wrk -d 1 http://localhost/#{page} -s /scripts/#{encoding}.lua`
 
-  result = `wrk -d 2 http://localhost/#{page} -s /scripts/#{encoding}.lua`
+  while true
 
-  reqs_sec = result.split("Requests/sec:")[1].to_f
-  size = result.split("Response Size:")[1].to_i
+    result = `wrk -d 2 http://localhost/#{page} -s /scripts/#{encoding}.lua`
 
-  {reqs_sec: reqs_sec, size: size}
+    reqs_sec = result.split("Requests/sec:")[1].to_f
+    size = result.split("Response Size:")[1].to_i
+
+    if size == 0
+      STDERR.puts "Failed to get size for #{page} trying again"
+    else
+      return {reqs_sec: reqs_sec, size: size}
+    end
+  end
 end
 
 results = {}
