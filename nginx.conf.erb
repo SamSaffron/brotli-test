@@ -1,0 +1,44 @@
+worker_processes  2;
+daemon off;
+
+error_log stderr warn;
+
+
+events {
+  worker_connections  1024;
+}
+
+
+http {
+    include       /etc/nginx/mime.types;
+    default_type  application/octet-stream;
+
+    log_format  main  '$remote_addr - $remote_user [$time_local] "$request" '
+                      '$status $body_bytes_sent "$http_referer" '
+                      '"$http_user_agent" "$http_x_forwarded_for"';
+
+    access_log           off;
+    sendfile             off;
+    keepalive_timeout    65;
+
+    gzip                 on;
+    gzip_types           *;
+    gzip_comp_level      <%=gzip_comp_level%>;
+
+    brotli               on;
+
+    brotli_comp_level    <%=brotli_comp_level%>;
+    brotli_types         *;
+
+    server {
+      listen 80;
+      server_name _;
+      root /assets;
+
+      location / {
+      }
+    }
+}
+
+
+

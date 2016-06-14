@@ -1,0 +1,90 @@
+#!/usr/bin/ruby
+require 'erb'
+require 'socket'
+
+class Config
+  attr_reader :gzip_comp_level, :brotli_comp_level
+
+  def self.write!(args)
+    File.write('/etc/nginx/nginx.conf', new(args).build)
+  end
+
+  def initialize(args)
+    args.each{|k,v| instance_variable_set("@#{k}",v)}
+  end
+
+  def build
+    b=binding
+    erb = ERB.new(File.read('/etc/nginx/nginx.conf.erb'))
+    erb.result b
+  end
+end
+
+def ensure_nginx_running(level)
+
+  Config.write!(gzip_comp_level: level, brotli_comp_level: level)
+  Process.kill "TERM", $nginx_pid
+  sleep 0.1
+  Process.kill "KILL", $nginx_pid
+  $nginx_pid = Process.spawn('nginx')
+  sleep 0.1
+
+  while true
+    begin
+      TCPSocket.new 'localhost', 80
+      break
+    rescue
+      sleep 0.001
+    end
+  end
+end
+
+Config.write!(gzip_comp_level: 5, brotli_comp_level: 5)
+$nginx_pid = Process.spawn('nginx')
+
+ensure_nginx_running(1)
+
+def test(page, encoding)
+  `wrk -d 1 http://localhost/#{page} -s /scripts/#{encoding}.lua`
+
+  result = `wrk -d 2 http://localhost/#{page} -s /scripts/#{encoding}.lua`
+
+  reqs_sec = result.split("Requests/sec:")[1].to_f
+  size = result.split("Response Size:")[1].to_i
+
+  {reqs_sec: reqs_sec, size: size}
+end
+
+results = {}
+
+(1..9).each do |level|
+  ensure_nginx_running(level)
+
+  Dir['/assets/*'].each do |f|
+    name = File.basename(f)
+    results[name] ||= {}
+
+    ["gzip","brotli"].each do |algo|
+      results[name][algo] ||= {}
+      results[name][algo][level] = test(name, algo)
+    end
+
+  end
+end
+
+results.each do |filename, stat|
+  puts
+  size = File.size("/assets/#{filename}")
+  puts "Stats for #{filename}:"
+  puts "Original size: #{size}"
+
+  ["gzip", "brotli"].each do |algo|
+    puts "#{algo} size"
+    puts (1..9).map{|i| stat[algo][i][:size].to_s}.join(",")
+    puts "#{algo} reqs/s"
+    puts (1..9).map{|i| stat[algo][i][:reqs_sec].to_s}.join(",")
+    puts
+  end
+
+end
+
